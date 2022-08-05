@@ -131,28 +131,33 @@ var _ = Describe("FetchToken", func() {
 			})
 
 			Context("when OAuth server cannot be reached", func() {
-				It("retries number of times and finally returns an error", func(done Done) {
-					var err error
+				It("retries number of times and finally returns an error", func() {
+					done := make(chan interface{})
+					timeout := 5
+					go func() {
+						var err error
 
-					defer close(done)
-					cfg.UaaEndpoint = "http://bogus.url:80"
-					client, err = uaa_go_client.NewClient(logger, cfg, clock)
-					Expect(err).NotTo(HaveOccurred())
-					wg := sync.WaitGroup{}
-					wg.Add(1)
-					go func(wg *sync.WaitGroup) {
-						defer GinkgoRecover()
-						defer wg.Done()
-						_, err := client.FetchToken(forceUpdate)
-						Expect(err).To(HaveOccurred())
-					}(&wg)
+						defer close(done)
+						cfg.UaaEndpoint = "http://bogus.url:80"
+						client, err = uaa_go_client.NewClient(logger, cfg, clock)
+						Expect(err).NotTo(HaveOccurred())
+						wg := sync.WaitGroup{}
+						wg.Add(1)
+						go func(wg *sync.WaitGroup) {
+							defer GinkgoRecover()
+							defer wg.Done()
+							_, err := client.FetchToken(forceUpdate)
+							Expect(err).To(HaveOccurred())
+						}(&wg)
 
-					for i := 0; i < DefaultMaxNumberOfRetries; i++ {
-						Eventually(logger, 2*time.Second).Should(gbytes.Say("fetch-token-from-uaa-start.*bogus.url"))
-						Eventually(logger, 2*time.Second).Should(gbytes.Say("error-fetching-token"))
-						clock.WaitForWatcherAndIncrement(DefaultRetryInterval + 10*time.Second)
-					}
-					wg.Wait()
+						for i := 0; i < DefaultMaxNumberOfRetries; i++ {
+							Eventually(logger, 2*time.Second).Should(gbytes.Say("fetch-token-from-uaa-start.*bogus.url"))
+							Eventually(logger, 2*time.Second).Should(gbytes.Say("error-fetching-token"))
+							clock.WaitForWatcherAndIncrement(DefaultRetryInterval + 10*time.Second)
+						}
+						wg.Wait()
+					}()
+					Eventually(done, timeout).Should(BeClosed())
 				}, 5)
 			})
 
